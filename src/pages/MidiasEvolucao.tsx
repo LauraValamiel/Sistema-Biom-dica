@@ -26,6 +26,9 @@ export default function MidiasEvolucao() {
   const [modalAberto, setModalAberto] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [arquivo, setArquivo] = useState<File | null>(null);
+
+  // Lightbox (Visualizador de Imagem)
+  const [midiaAmpliada, setMidiaAmpliada] = useState<string | null>(null);
   
   // Form Upload
   const [form, setForm] = useState({
@@ -42,7 +45,6 @@ export default function MidiasEvolucao() {
 
   const buscarDados = async () => {
     setLoading(true);
-    // Busca as mídias e traz junto o nome do paciente usando o Join do Supabase
     const { data: midiasData, error: midiasError } = await supabase
       .from('paciente_midias')
       .select('*, pacientes(nome_completo)')
@@ -51,7 +53,6 @@ export default function MidiasEvolucao() {
     if (midiasData) setMidias(midiasData as any);
     if (midiasError) console.error('Erro ao buscar mídias:', midiasError);
 
-    // Busca pacientes para o Select do modal
     const { data: pacData } = await supabase.from('pacientes').select('id, nome_completo').order('nome_completo');
     if (pacData) setPacientes(pacData);
     
@@ -72,11 +73,9 @@ export default function MidiasEvolucao() {
     setUploading(true);
 
     try {
-      // 1. Gera um nome único para o arquivo
       const fileExt = arquivo.name.split('.').pop();
       const fileName = `${form.paciente_id}-${Date.now()}.${fileExt}`;
 
-      // 2. Faz o Upload da foto para o Storage (Bucket 'midias')
       const { error: uploadError } = await supabase.storage.from('midias').upload(fileName, arquivo, {
         cacheControl: '3600',
         upsert: false
@@ -84,10 +83,8 @@ export default function MidiasEvolucao() {
 
       if (uploadError) throw new Error(`Erro no upload: ${uploadError.message}`);
 
-      // 3. Pega a URL pública gerada
       const { data: publicUrlData } = supabase.storage.from('midias').getPublicUrl(fileName);
 
-      // 4. Salva o registro na tabela
       const payload = {
         paciente_id: form.paciente_id,
         url_arquivo: publicUrlData.publicUrl,
@@ -116,16 +113,31 @@ export default function MidiasEvolucao() {
 
   const deletarMidia = async (id: string, url_arquivo: string) => {
     if (window.confirm('Tem certeza que deseja excluir esta foto permanentemente?')) {
-      // Deleta do Banco
       await supabase.from('paciente_midias').delete().eq('id', id);
-      
-      // Tenta deletar do Storage (Opcional, mas mantém limpo)
       try {
         const fileName = url_arquivo.split('/').pop();
         if (fileName) await supabase.storage.from('midias').remove([fileName]);
       } catch (e) {}
-
       buscarDados();
+    }
+  };
+
+  const baixarImagem = async (url: string, nomePaciente: string, categoria: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      // Adicionado a "categoria" ao nome do ficheiro gerado
+      link.download = `Evolucao_${categoria}_${nomePaciente.replace(/\s+/g, '_')}_${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      // Fallback: se o navegador bloquear o download direto por causa do CORS, abre num separador novo
+      window.open(url, '_blank');
     }
   };
 
@@ -136,30 +148,33 @@ export default function MidiasEvolucao() {
   });
 
   return (
-    <div className="p-8 w-full max-w-7xl mx-auto flex flex-col h-screen overflow-hidden relative">
-      <header className="flex items-center justify-between mb-8 shrink-0">
+    <div className="w-full h-full flex flex-col mx-auto overflow-x-hidden box-border sm:p-8 max-w-7xl">
+      
+      {/* CABEÇALHO RESPONSIVO: Empilha no telemóvel */}
+      <header className="px-4 pt-6 pb-4 sm:p-0 flex flex-col sm:flex-row justify-between sm:items-center gap-4 w-full shrink-0 mb-4 sm:mb-8">
         <div>
-          <h1 className="text-3xl font-light text-gray-800">Mídias e Evolução</h1>
-          <p className="text-gray-500 mt-1">Galeria de acompanhamento clínico de resultados (Antes e Depois)</p>
+          <h1 className="text-2xl md:text-3xl font-light text-gray-800">Mídias e Evolução</h1>
+          <p className="text-sm md:text-base text-gray-500 mt-1">Galeria de acompanhamento clínico de resultados</p>
         </div>
-        <button onClick={() => setModalAberto(true)} className="bg-[#B68B40] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-[#9a7330] shadow-sm flex items-center gap-2">
+        <button onClick={() => setModalAberto(true)} className="bg-[#B68B40] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#9a7330] shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto shrink-0">
           + Adicionar Foto
         </button>
       </header>
 
-      <div className="bg-white rounded-xl border border-[#B68B40]/30 shadow-sm flex-1 flex flex-col overflow-hidden p-6">
+      {/* CAIXA BRANCA E FILTROS: Edge-to-Edge no mobile */}
+      <div className="bg-white sm:rounded-lg border-y sm:border border-[#B68B40]/30 shadow-sm flex-1 flex flex-col overflow-hidden w-full">
         
         {/* BARRA DE FILTROS */}
-        <div className="flex gap-4 mb-6 border-b border-gray-100 pb-6 shrink-0">
-          <div className="w-1/3">
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Filtrar por Paciente</label>
+        <div className="p-4 sm:p-6 border-b border-[#B68B40]/20 bg-[#FDFCFB] flex flex-col sm:flex-row gap-4 shrink-0 w-full">
+          <div className="flex-1 sm:max-w-xs">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Filtrar por Paciente</label>
             <select value={filtroPaciente} onChange={e => setFiltroPaciente(e.target.value)} className="w-full border border-gray-300 p-2.5 text-sm rounded-lg outline-none focus:border-[#B68B40] bg-white">
               <option value="">Todos os pacientes</option>
               {pacientes.map(p => <option key={p.id} value={p.id}>{p.nome_completo}</option>)}
             </select>
           </div>
-          <div className="w-1/4">
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Evolução</label>
+          <div className="flex-1 sm:max-w-[200px]">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Evolução</label>
             <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)} className="w-full border border-gray-300 p-2.5 text-sm rounded-lg outline-none focus:border-[#B68B40] bg-white">
               <option value="">Todas as fotos</option>
               <option value="Antes">Antes do Procedimento</option>
@@ -170,45 +185,68 @@ export default function MidiasEvolucao() {
         </div>
 
         {/* GALERIA (GRID) */}
-        <div className="flex-1 overflow-y-auto pr-2">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 bg-gray-50/30">
           {loading ? (
             <p className="text-center text-gray-400 py-10">Carregando galeria...</p>
           ) : midiasFiltradas.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="flex flex-col items-center justify-center py-20 text-center px-4">
               <div className="text-5xl mb-4 opacity-30">📸</div>
               <h3 className="text-lg font-medium text-gray-800 mb-2">Nenhuma foto encontrada</h3>
               <p className="text-gray-500 text-sm max-w-md">Faça o upload das imagens dos seus procedimentos para acompanhar a evolução dos seus pacientes.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
               {midiasFiltradas.map(midia => (
-                <div key={midia.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all group relative">
+                <div key={midia.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all group relative flex flex-col h-full">
                   
                   {/* Etiqueta Flutuante de Categoria */}
-                  <div className={`absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm z-10 ${
+                  <div className={`absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold text-white shadow-sm z-10 uppercase tracking-wider ${
                     midia.categoria === 'Antes' ? 'bg-gray-600' : 
                     midia.categoria === 'Depois' ? 'bg-[#B68B40]' : 'bg-emerald-600'
                   }`}>
                     {midia.categoria}
                   </div>
 
-                  {/* Imagem (Exibe um quadrado perfeito, cortando as sobras de forma elegante) */}
-                  <div className="h-48 w-full bg-gray-100 relative">
+                  {/* Imagem Clicável (Abre no Visualizador Interno) */}
+                  <div 
+                    className="h-48 sm:h-56 w-full bg-gray-100 relative shrink-0 cursor-pointer"
+                    onClick={() => setMidiaAmpliada(midia.url_arquivo)}
+                  >
                     <img src={midia.url_arquivo} alt="Evolução" className="w-full h-full object-cover" />
-                    
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <button onClick={() => window.open(midia.url_arquivo, '_blank')} className="text-white text-sm font-medium border border-white px-4 py-2 rounded-lg hover:bg-white hover:text-black transition-colors">Ampliar Foto</button>
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <svg className="w-8 h-8 text-white drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
                     </div>
                   </div>
                   
                   {/* Rodapé da Foto */}
-                  <div className="p-4">
+                  <div className="p-4 flex flex-col flex-1">
                     <p className="font-bold text-gray-800 text-sm truncate" title={midia.pacientes?.nome_completo}>{midia.pacientes?.nome_completo || 'Paciente Desconhecido'}</p>
                     <p className="text-xs text-[#B68B40] font-medium mt-1 truncate">{midia.procedimento}</p>
                     
-                    <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
+                    <div className="flex justify-between items-center mt-auto pt-4 border-t border-gray-100">
                       <span className="text-[10px] text-gray-400 font-medium">Data: {new Date(midia.data_registro).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
-                      <button onClick={() => deletarMidia(midia.id, midia.url_arquivo)} className="text-red-400 hover:text-red-600 text-xs">Excluir</button>
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        {/* Ícone de Download - Atualizado com a nova chamada */}
+                        <button 
+                          onClick={() => baixarImagem(midia.url_arquivo, midia.pacientes?.nome_completo || 'paciente', midia.categoria)} 
+                          className="text-[#B68B40] hover:text-[#9a7330] p-1.5 rounded-md hover:bg-[#B68B40]/10 transition-colors" 
+                          title="Baixar Foto"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </button>
+                        {/* Ícone de Lixeira */}
+                        <button 
+                          onClick={() => deletarMidia(midia.id, midia.url_arquivo)} 
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-md transition-colors" 
+                          title="Excluir Foto"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -220,64 +258,90 @@ export default function MidiasEvolucao() {
 
       {/* --- MODAL DE UPLOAD DE NOVA MÍDIA --- */}
       {modalAberto && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-[#FDFCFB]">
-              <h2 className="text-xl font-medium text-[#B68B40]">Adicionar Nova Foto</h2>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-2 sm:p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg h-[95vh] sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col mx-auto">
+            <div className="p-4 sm:p-5 border-b border-gray-100 flex justify-between items-center bg-[#FDFCFB] shrink-0">
+              <h2 className="text-lg sm:text-xl font-medium text-[#B68B40]">Adicionar Nova Foto</h2>
               <button onClick={() => setModalAberto(false)} className="text-gray-400 text-2xl hover:text-gray-700" disabled={uploading}>&times;</button>
             </div>
             
-            <div className="p-6 space-y-5 flex-1 overflow-y-auto">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 flex-1 overflow-y-auto overflow-x-hidden">
               
               <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Paciente *</label>
-                <select value={form.paciente_id} onChange={e => setForm({...form, paciente_id: e.target.value})} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none bg-white">
+                <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider mb-1 sm:mb-2">Paciente *</label>
+                <select value={form.paciente_id} onChange={e => setForm({...form, paciente_id: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 sm:p-3 text-sm focus:border-[#B68B40] outline-none bg-white">
                   <option value="">Selecione o paciente...</option>
                   {pacientes.map(p => <option key={p.id} value={p.id}>{p.nome_completo}</option>)}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Etapa (Evolução) *</label>
-                  <select value={form.categoria} onChange={e => setForm({...form, categoria: e.target.value as any})} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none bg-white">
+                  <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider mb-1 sm:mb-2">Etapa *</label>
+                  <select value={form.categoria} onChange={e => setForm({...form, categoria: e.target.value as any})} className="w-full border border-gray-300 rounded-lg p-2.5 sm:p-3 text-sm focus:border-[#B68B40] outline-none bg-white">
                     <option value="Antes">Antes</option>
                     <option value="Durante">Durante</option>
                     <option value="Depois">Depois</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Data da Foto *</label>
-                  <input type="date" value={form.data_registro} onChange={e => setForm({...form, data_registro: e.target.value})} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" />
+                  <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider mb-1 sm:mb-2">Data da Foto *</label>
+                  <input type="date" value={form.data_registro} onChange={e => setForm({...form, data_registro: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 sm:p-3 text-sm focus:border-[#B68B40] outline-none bg-white" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Procedimento *</label>
-                <input type="text" value={form.procedimento} onChange={e => setForm({...form, procedimento: e.target.value})} placeholder="Ex: Lipo Enzimática de Papada" className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" />
+                <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider mb-1 sm:mb-2">Procedimento *</label>
+                <input type="text" value={form.procedimento} onChange={e => setForm({...form, procedimento: e.target.value})} placeholder="Ex: Lipo Enzimática de Papada" className="w-full border border-gray-300 rounded-lg p-2.5 sm:p-3 text-sm focus:border-[#B68B40] outline-none" />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Arquivo da Imagem *</label>
-                <input type="file" accept="image/*" onChange={handleFileChange} className="w-full border border-dashed border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#B68B40]/10 file:text-[#B68B40] hover:file:bg-[#B68B40]/20" />
+                <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider mb-1 sm:mb-2">Arquivo da Imagem *</label>
+                <input type="file" accept="image/*" onChange={handleFileChange} className="w-full border border-dashed border-gray-300 rounded-lg p-2 sm:p-3 text-sm focus:border-[#B68B40] outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#B68B40]/10 file:text-[#B68B40] hover:file:bg-[#B68B40]/20 bg-gray-50/50" />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Observações Técnicas</label>
-                <textarea value={form.observacoes} onChange={e => setForm({...form, observacoes: e.target.value})} placeholder="Ex: Paciente apresentou leve edema lateral..." className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none h-20" />
+                <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider mb-1 sm:mb-2">Observações Técnicas</label>
+                <textarea value={form.observacoes} onChange={e => setForm({...form, observacoes: e.target.value})} placeholder="Ex: Paciente apresentou leve edema lateral..." className="w-full border border-gray-300 rounded-lg p-2.5 sm:p-3 text-sm focus:border-[#B68B40] outline-none h-20 sm:h-24" />
               </div>
 
             </div>
 
-            <div className="p-5 border-t border-gray-100 bg-gray-50 flex justify-end gap-4">
-              <button onClick={() => setModalAberto(false)} disabled={uploading} className="px-6 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-800 disabled:opacity-50">Cancelar</button>
-              <button onClick={salvarMidia} disabled={uploading} className="bg-[#B68B40] text-white px-8 py-2.5 rounded-lg text-sm font-medium hover:bg-[#9a7330] shadow-sm disabled:opacity-50 flex items-center gap-2">
+            <div className="p-4 sm:p-5 border-t border-gray-100 bg-gray-50 flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 shrink-0">
+              <button onClick={() => setModalAberto(false)} disabled={uploading} className="px-6 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-800 bg-gray-200 sm:bg-transparent rounded-lg sm:rounded-none disabled:opacity-50">Cancelar</button>
+              <button onClick={salvarMidia} disabled={uploading} className="bg-[#B68B40] text-white px-8 py-2.5 rounded-lg text-sm font-medium hover:bg-[#9a7330] shadow-sm disabled:opacity-50 flex items-center justify-center gap-2">
                 {uploading ? 'Enviando foto...' : 'Fazer Upload'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* --- LIGHTBOX (VISUALIZADOR DE FOTO EM ECRÃ INTEIRO) --- */}
+      {midiaAmpliada && (
+        <div 
+          className="fixed inset-0 bg-black/95 flex items-center justify-center z-[9999] p-2 sm:p-8 backdrop-blur-sm"
+          onClick={() => setMidiaAmpliada(null)}
+        >
+          <button 
+            onClick={() => setMidiaAmpliada(null)} 
+            className="absolute top-4 right-4 text-white hover:text-gray-300 p-2 z-50 bg-black/50 rounded-full"
+            title="Fechar Imagem"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-8 sm:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          <img 
+            src={midiaAmpliada} 
+            alt="Mídia Ampliada" 
+            className="max-w-full max-h-full object-contain rounded-md shadow-2xl" 
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
+
     </div>
   );
 }
