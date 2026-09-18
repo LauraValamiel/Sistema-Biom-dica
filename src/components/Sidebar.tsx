@@ -75,9 +75,18 @@ export default function Sidebar({ onCloseMobile }: SidebarProps) {
   return (
     <div className="h-full flex flex-col bg-white border-r border-[#B68B40]/20 w-64 select-none">
       
-      {/* LOGO DO TOPO MAIOR */}
-      <div className="p-6 flex flex-col items-center justify-center border-b border-[#B68B40]/10 shrink-0">
-        <img src="/logo.jpeg" alt="Emily Barcelos" className="h-28 object-contain mb-1" />
+      {/* LOGO DO TOPO: EMBLEMA EM CIMA E TEXTO COMPLETO ABAIXO */}
+      <div className="p-5 flex flex-col items-center justify-center border-b border-[#B68B40]/10 shrink-0 text-center">
+        <img 
+          src="/logo%20-%20eb.jpeg" 
+          alt="Emblema EB" 
+          className="h-16 w-16 rounded-full object-cover shadow-sm border border-[#B68B40]/30 mb-2.5" 
+        />
+        <img 
+          src="/logo%20-%20nome.jpeg" 
+          alt="Emily Barcelos Biomédica Esteta" 
+          className="w-full max-w-[160px] object-contain" 
+        />
       </div>
 
       {/* LINKS DE NAVEGAÇÃO PRINCIPAIS */}
@@ -127,7 +136,7 @@ export default function Sidebar({ onCloseMobile }: SidebarProps) {
         >
           <span className="shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M17 16l4-4m0 0l-4-4m4 4H7v6m4-6v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           </span>
           <span>Sair da Conta</span>

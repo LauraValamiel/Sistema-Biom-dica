@@ -81,15 +81,27 @@ function AppLayout() {
       {/* ÁREA PRINCIPAL DO SISTEMA */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden w-full relative">
         
-        {/* CABEÇALHO MOBILE (Menu Hamburguer) */}
-        <div className="md:hidden bg-white border-b border-[#B68B40]/20 p-4 flex items-center justify-between z-30 shadow-sm shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setMenuMobileAberto(true)} className="p-2 -ml-2 text-[#B68B40] hover:bg-[#B68B40]/10 rounded-lg transition-colors focus:outline-none">
-              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
+        {/* CABEÇALHO MOBILE (Menu Hamburguer e Logos Maiores Lado a Lado) */}
+        <div className="md:hidden bg-white border-b border-[#B68B40]/20 p-3 flex items-center justify-between z-30 shadow-sm shrink-0">
+          <button onClick={() => setMenuMobileAberto(true)} className="p-2 text-[#B68B40] hover:bg-[#B68B40]/10 rounded-lg transition-colors focus:outline-none">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+
+          {/* LOGOS LADO A LADO COM TAMANHO MAIOR */}
+          <div className="flex items-center gap-2.5">
+            <img 
+              src="/logo%20-%20eb.jpeg" 
+              alt="Emblema EB" 
+              className="h-12 w-12 rounded-full object-cover border border-[#B68B40]/30 shadow-sm" 
+            />
+            <img 
+              src="/logo%20-%20nome.jpeg" 
+              alt="Emily Barcelos" 
+              className="h-8 w-auto object-contain" 
+            />
           </div>
-          <img src="/logo.jpeg" alt="Emily Barcelos" className="h-9 object-contain" />
-          <div className="w-7"></div>
+
+          <div className="w-9"></div> {/* Espaçador para centrar perfeitamente */}
         </div>
 
         {/* CONTEÚDO DAS PÁGINAS */}
