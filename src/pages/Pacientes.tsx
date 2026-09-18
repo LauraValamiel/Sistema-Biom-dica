@@ -3,8 +3,23 @@ import { supabase } from '../lib/supabase';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
-// --- TIPAGENS ---
-type Paciente = { id: string; nome_completo: string; cpf: string; rg: string; data_nascimento: string; telefone: string; email: string; endereco: string; data_cadastro: string; };
+type Paciente = { 
+  id: string; 
+  nome_completo: string; 
+  cpf: string; 
+  rg: string; 
+  data_nascimento: string; 
+  telefone: string; 
+  email: string; 
+  cep: string;
+  rua: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  data_cadastro: string; 
+};
+
 type Campo = { id: string; label: string; tipo: string; opcoes?: string[] };
 type Secao = { titulo: string; campos: Campo[] };
 type ModeloFicha = { id: string; titulo: string; campos: Secao[] };
@@ -27,13 +42,11 @@ export default function Pacientes() {
   const [historicoAnamneses, setHistoricoAnamneses] = useState<any[]>([]);
   const [historicoDocumentos, setHistoricoDocumentos] = useState<any[]>([]);
   
-  // Fluxos Fichas
   const [fluxoAnamnese, setFluxoAnamnese] = useState<'lista' | 'selecao' | 'preenchendo'>('lista');
   const [fichaSelecionada, setFichaSelecionada] = useState<ModeloFicha | null>(null);
   const [fichaPreenchidaId, setFichaPreenchidaId] = useState<string | null>(null);
   const [respostasAtuais, setRespostasAtuais] = useState<Record<string, any>>({});
   
-  // Fluxos Documentos
   const [fluxoDocumento, setFluxoDocumento] = useState<'lista' | 'selecao' | 'preenchendo'>('lista');
   const [termoSelecionado, setTermoSelecionado] = useState<ModeloTermo | null>(null);
   const [termoPreenchidoId, setTermoPreenchidoId] = useState<string | null>(null);
@@ -41,24 +54,20 @@ export default function Pacientes() {
   const [autorizacaoTermo, setAutorizacaoTermo] = useState<'Sim' | 'Não' | null>(null);
   const [cidadeTermo, setCidadeTermo] = useState('João Monlevade - MG');
   
-  // Fluxos Mídias
   const [historicoMidias, setHistoricoMidias] = useState<Midia[]>([]);
   const [fluxoMidia, setFluxoMidia] = useState<'lista' | 'upload'>('lista');
   const [arquivoMidia, setArquivoMidia] = useState<File | null>(null);
   const [uploadingMidia, setUploadingMidia] = useState(false);
   const [formMidia, setFormMidia] = useState({ categoria: 'Antes', procedimento: '', data_registro: new Date().toISOString().split('T')[0], observacoes: '' });
 
-  // Autenticação
   const [dataAssinatura, setDataAssinatura] = useState(new Date().toISOString().split('T')[0]);
   const [termoAceito, setTermoAceito] = useState(false);
   const [cpfAssinatura, setCpfAssinatura] = useState('');
   const [profAceito, setProfAceito] = useState(false);
   const [registroProfissional, setRegistroProfissional] = useState('');
 
-  // Controle Visual do PDF
   const [gerandoPdf, setGerandoPdf] = useState(false);
 
-  // Canvas
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasClienteRef = useRef<HTMLCanvasElement>(null);
   const canvasProfRef = useRef<HTMLCanvasElement>(null);
@@ -66,9 +75,9 @@ export default function Pacientes() {
   const [isDrawingCliente, setIsDrawingCliente] = useState(false);
   const [isDrawingProf, setIsDrawingProf] = useState(false);
 
-  // --- MÁSCARAS E FUNÇÕES AUXILIARES ---
   const formatarCPF = (v: string) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
   const formatarTelefone = (v: string) => v.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
+  const formatarCEP = (v: string) => v.replace(/\D/g, '').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{3})\d+?$/, '$1');
 
   const formatarTextoTermo = (texto: string) => texto.split(/\\n|\n/).map((linha, idx) => {
     if (linha.trim() === '') return <br key={idx} />;
@@ -83,11 +92,19 @@ export default function Pacientes() {
     return "Declaro que as informações acima são verdadeiras e que não omiti qualquer informação importante sobre minha saúde.";
   };
 
-  // --- GERADOR DE PDF ---
   const baixarPDF = async (tipo: 'ficha' | 'termo', item: any) => {
     setGerandoPdf(true);
     const tituloDoc = tipo === 'ficha' ? item.historico_medico?.tipo_ficha : item.tipo_documento;
     const nomeArquivo = `${form.nome_completo} - ${tituloDoc}.pdf`;
+
+    const enderecoCompleto = [
+      form.rua ? `${form.rua}` : '',
+      form.numero ? `nº ${form.numero}` : '',
+      form.bairro ? `Bairro: ${form.bairro}` : '',
+      form.cidade ? `${form.cidade}` : '',
+      form.estado ? `- ${form.estado}` : '',
+      form.cep ? `(CEP: ${form.cep})` : ''
+    ].filter(Boolean).join(', ');
 
     let html = `
       <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #222; line-height: 1.4; font-size: 11px; width: 100%; max-width: 800px; margin: 0 auto; background: white;">
@@ -95,7 +112,7 @@ export default function Pacientes() {
           * { box-sizing: border-box; }
           .header { text-align: center; margin-bottom: 25px; width: 100%; }
           .header img { display: block; margin: 0 auto 12px auto; width: 170px; }
-          .contact-info { color: #B68B40; font-size: 11px; margin-bottom: 20px; font-weight: 500; text-align: center; }
+          .contact-info { color: #B68B40; font-size: 11px; margin-bottom: 20px; font-weight: 500; text-align: center; letter-spacing: 0.5px; }
           .title-container { display: table; width: 100%; margin-bottom: 25px; }
           .title-line { display: table-cell; width: 35%; border-bottom: 1.5px solid rgba(182, 139, 64, 0.3); vertical-align: middle; }
           .title-text { display: table-cell; width: 30%; color: #222; font-size: 14px; font-weight: bold; text-transform: uppercase; text-align: center; letter-spacing: 1.5px; white-space: nowrap; vertical-align: middle; padding: 0 10px; }
@@ -128,7 +145,7 @@ export default function Pacientes() {
         
         <div class="header avoid-cut">
           <img src="${window.location.origin}/logo.jpeg" onerror="this.style.display='none'" />
-          <div class="contact-info">📞 (31) 97224-1476 &nbsp;&nbsp;|&nbsp;&nbsp; 📷 dra.emilybarcelos</div>
+          <div class="contact-info">(31) 97224-1476 &nbsp;&nbsp;|&nbsp;&nbsp; dra.emilybarcelos</div>
           <div class="title-container">
             <div class="title-line"></div>
             <div class="title-text"><span class="dot">•</span> ${tituloDoc} <span class="dot">•</span></div>
@@ -152,7 +169,7 @@ export default function Pacientes() {
               <td colspan="2"><span class="label">E-mail:</span> <span class="val">${form.email || ''}</span></td>
             </tr>
             <tr>
-              <td colspan="3"><span class="label">Endereço:</span> <span class="val">${form.endereco || ''}</span></td>
+              <td colspan="3"><span class="label">Endereço:</span> <span class="val">${enderecoCompleto}</span></td>
             </tr>
           </table>
         </div>
@@ -259,7 +276,6 @@ export default function Pacientes() {
     try { await html2pdf().set(opt).from(html).save(); } catch (error) { alert("Ocorreu um erro ao gerar o arquivo PDF. Tente novamente."); } finally { setGerandoPdf(false); }
   };
 
-  // --- CANVA DESENHO E RESTO DAS FUNÇÕES GERAIS ---
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => { setIsDrawing(true); const ctx = canvasRef.current?.getContext('2d'); if (!ctx) return; const rect = canvasRef.current!.getBoundingClientRect(); const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX; const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY; ctx.beginPath(); ctx.moveTo(clientX - rect.left, clientY - rect.top); };
   const draw = (e: React.MouseEvent | React.TouchEvent) => { if (!isDrawing) return; const ctx = canvasRef.current?.getContext('2d'); if (!ctx) return; const rect = canvasRef.current!.getBoundingClientRect(); const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX; const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY; ctx.lineTo(clientX - rect.left, clientY - rect.top); ctx.stroke(); };
   const stopDrawing = () => setIsDrawing(false);
@@ -278,7 +294,36 @@ export default function Pacientes() {
   const buscarModelosDisponiveis = async () => { const { data: fichas } = await supabase.from('modelos_fichas').select('*').order('titulo', { ascending: true }); if (fichas) setModelosFichas(fichas); const { data: termos } = await supabase.from('modelos_termos').select('*').order('titulo', { ascending: true }); if (termos) setModelosTermos(termos); };
   const buscarHistoricoPaciente = async (pacienteId: string) => { const { data: anamneses } = await supabase.from('fichas_anamnese').select('*').eq('paciente_id', pacienteId).order('created_at', { ascending: false }); if (anamneses) setHistoricoAnamneses(anamneses); const { data: documentos } = await supabase.from('documentos_legais').select('*').eq('paciente_id', pacienteId).order('created_at', { ascending: false }); if (documentos) setHistoricoDocumentos(documentos); const { data: midiasData } = await supabase.from('paciente_midias').select('*').eq('paciente_id', pacienteId).order('data_registro', { ascending: false }); if (midiasData) setHistoricoMidias(midiasData); };
   
-  const salvarPaciente = async () => { if (!form.nome_completo) return alert('Nome obrigatório!'); const payload = { nome_completo: form.nome_completo, cpf: form.cpf || null, rg: form.rg || null, data_nascimento: form.data_nascimento || null, telefone: form.telefone || null, email: form.email || null, endereco: form.endereco || null }; if (isEditing && form.id) { await supabase.from('pacientes').update(payload).eq('id', form.id); buscarPacientes(); alert('Atualizado com sucesso!'); } else { const { data } = await supabase.from('pacientes').insert([{ ...payload, data_cadastro: new Date().toISOString() }]).select().single(); if (data) { buscarPacientes(); setForm(data); setIsEditing(true); alert('Cadastrado com sucesso!'); } } };
+  const salvarPaciente = async () => { 
+    if (!form.nome_completo) return alert('Nome obrigatório!'); 
+    const payload = { 
+      nome_completo: form.nome_completo, 
+      cpf: form.cpf || null, 
+      rg: form.rg || null, 
+      data_nascimento: form.data_nascimento || null, 
+      telefone: form.telefone || null, 
+      email: form.email || null, 
+      cep: form.cep || null,
+      rua: form.rua || null,
+      numero: form.numero || null,
+      bairro: form.bairro || null,
+      cidade: form.cidade || null,
+      estado: form.estado || null
+    }; 
+    if (isEditing && form.id) { 
+      await supabase.from('pacientes').update(payload).eq('id', form.id); 
+      buscarPacientes(); 
+      alert('Atualizado com sucesso!'); 
+    } else { 
+      const { data } = await supabase.from('pacientes').insert([{ ...payload, data_cadastro: new Date().toISOString() }]).select().single(); 
+      if (data) { 
+        buscarPacientes(); 
+        setForm(data); 
+        setIsEditing(true); 
+        alert('Cadastrado com sucesso!'); 
+      } 
+    } 
+  };
 
   const deletarPaciente = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -295,7 +340,7 @@ export default function Pacientes() {
   const salvarFichaAnamnese = async () => { const imgDesenho = getImgCanvas(); const dadosAssinatura = await gerarAssinaturaEletronica(false); if (!dadosAssinatura) return; const payload = { paciente_id: form.id, historico_medico: { tipo_ficha: fichaSelecionada?.titulo, respostas: respostasAtuais, assinatura_desenho: imgDesenho, assinatura_eletronica: dadosAssinatura, data_assinatura: dataAssinatura, data_preenchimento: new Date().toISOString() } }; if (fichaPreenchidaId) { const { data } = await supabase.from('fichas_anamnese').update(payload).eq('id', fichaPreenchidaId).select().single(); if (data) { setHistoricoAnamneses(prev => prev.map(f => f.id === fichaPreenchidaId ? data : f)); setFluxoAnamnese('lista'); } } else { const { data } = await supabase.from('fichas_anamnese').insert([payload]).select().single(); if (data) { setHistoricoAnamneses(prev => [data, ...prev]); setFluxoAnamnese('lista'); } } };
 
   const iniciarNovoTermo = (modelo: ModeloTermo) => { setTermoSelecionado(modelo); setRespostasTermo({}); setAutorizacaoTermo(null); setCidadeTermo('João Monlevade - MG'); setDataAssinatura(new Date().toISOString().split('T')[0]); setTermoPreenchidoId(null); setTermoAceito(false); setCpfAssinatura(form.cpf || ''); setProfAceito(false); setRegistroProfissional(''); setFluxoDocumento('preenchendo'); setTimeout(() => { limparCanvasTermo('cliente'); limparCanvasTermo('prof'); }, 100); };
-  const editarTermoSalvo = (termoSalvo: any) => { const modeloOriginal = modelosTermos.find(m => m.titulo === termoSalvo.tipo_documento); if (!modeloOriginal) return alert('Modelo não encontrado.'); const docs = termoSalvo.url_documento_assinado; setTermoSelecionado(modeloOriginal); setRespostasTermo(docs.respostas_extras || {}); setAutorizacaoTermo(docs.autorizacao || null); setCidadeTermo(docs.cidade || 'João Monlevade - MG'); setDataAssinatura(docs.data_assinatura || new Date().toISOString().split('T')[0]); setTermoPreenchidoId(termoSalvo.id); setTermoAceito(false); setCpfAssinatura(form.cpf || ''); setProfAceito(false); setRegistroProfissional(''); setFluxoDocumento('preenchendo'); setTimeout(() => { const ctxC = canvasClienteRef.current?.getContext('2d'); const ctxP = canvasProfRef.current?.getContext('2d'); if (docs.assinatura_cliente_desenho && ctxC) { const img = new Image(); img.onload = () => ctxC.drawImage(img, 0, 0); img.src = docs.assinatura_cliente_desenho; } else limparCanvasTermo('cliente'); if (docs.assinatura_profissional_desenho && ctxP) { const img = new Image(); img.onload = () => ctxP.drawImage(img, 0, 0); img.src = docs.assinatura_profissional_desenho; } else limparCanvasTermo('prof'); }, 150); };
+  const editarTermoSalvo = (termoSalvo: any) => { const modeloOriginal = modelosTermos.find(m => m.titulo === termoSalvo.tipo_documento); if (!modeloOriginal) return alert('Modelo não encontrado.'); const docs = termoSalvo.url_documento_assinado; setTermoSelecionado(modeloOriginal); setRespostasTermo(docs.respostas_extras || {}); setAutorizacaoTermo(docs.autorizacao || null); setCidadeTermo(docs.cidade || 'João Monlevade - MG'); setDataAssinatura(docs.data_assinatura || new Date().toISOString().split('T')[0]); setTermoPreenchidoId(termoSalvo.id); setTermoAceito(false); setCpfAssinatura(form.cpf || ''); setProfAceito(false); setRegistroProfissional(''); setFluxoDocumento('preenchendo'); setTimeout(() => { const ctxC = canvasClienteRef.current?.getContext('2d'); const ctxP = canvasProfRef.current?.getContext('2d'); if (docs.assinatura_cliente_desenho && ctxC) { const img = new Image(); img.onload = () => ctxC.drawImage(img, 0, 0); img.src = docs.assinatura_cliente_desenho; } else limparCanvasTermo('cliente'); if (docs.assinatura_profissional_desenho && ctxP) { const img = new Image(); img.onload = () => ctxC.drawImage(img, 0, 0); img.src = docs.assinatura_profissional_desenho; } else limparCanvasTermo('prof'); }, 150); };
   const excluirTermoSalvo = async (id: string) => { if (window.confirm('Excluir termo?')) { await supabase.from('documentos_legais').delete().eq('id', id); setHistoricoDocumentos(prev => prev.filter(d => d.id !== id)); } };
   const salvarDocumentoTermo = async () => { if (!autorizacaoTermo) return alert("Marque se AUTORIZA ou NÃO AUTORIZA."); const imgCliente = getImgCanvasTermo(canvasClienteRef); const imgProf = getImgCanvasTermo(canvasProfRef); const dadosAssinatura = await gerarAssinaturaEletronica(true); if (!dadosAssinatura) return; const payload = { paciente_id: form.id, tipo_documento: termoSelecionado?.titulo, status_assinatura: true, url_documento_assinado: { texto_acordado: termoSelecionado?.conteudo, respostas_extras: respostasTermo, autorizacao: autorizacaoTermo, cidade: cidadeTermo, data_assinatura: dataAssinatura, assinatura_cliente_desenho: imgCliente, assinatura_profissional_desenho: imgProf, assinatura_eletronica: dadosAssinatura } }; if (termoPreenchidoId) { const { data } = await supabase.from('documentos_legais').update(payload).eq('id', termoPreenchidoId).select().single(); if (data) { setHistoricoDocumentos(prev => prev.map(d => d.id === termoPreenchidoId ? data : d)); setFluxoDocumento('lista'); } } else { const { data } = await supabase.from('documentos_legais').insert([payload]).select().single(); if (data) { setHistoricoDocumentos(prev => [data, ...prev]); setFluxoDocumento('lista'); } } };
 
@@ -307,10 +352,10 @@ export default function Pacientes() {
   const pacientesProcessados = pacientes.filter(p => p.nome_completo.toLowerCase().includes(busca.toLowerCase())).sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
 
   return (
-    <div className="w-full h-full flex flex-col mx-auto overflow-hidden sm:p-8 max-w-7xl">
+    <div className="w-full h-full p-4 md:p-8 mx-auto flex flex-col overflow-x-hidden box-border max-w-7xl">
       
-      {/* CABEÇALHO DA PÁGINA (Com margens restauradas apenas no eixo Y e encostado às laterais) */}
-      <header className="px-4 pt-6 pb-2 sm:p-0 flex flex-col sm:flex-row justify-between gap-3 w-full shrink-0">
+      {/* CABEÇALHO DA PÁGINA COM ALINHAMENTO PERFEITO */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 w-full shrink-0">
         <div>
           <h1 className="text-2xl md:text-3xl font-light text-gray-800">Pacientes</h1>
           <p className="text-sm md:text-base text-gray-500 mt-1">Gestão de prontuários 100% digitais</p>
@@ -331,29 +376,25 @@ export default function Pacientes() {
         </div>
       )}
 
-      {/* CAIXA BRANCA PRINCIPAL (Edge-to-Edge no telemóvel, com bordas apenas no computador) */}
-      <div className="bg-white sm:rounded-lg border-y sm:border border-[#B68B40]/30 shadow-sm flex-1 flex flex-col overflow-hidden w-full">
+      {/* CAIXA BRANCA PRINCIPAL */}
+      <div className="bg-white rounded-xl border border-[#B68B40]/30 shadow-sm flex-1 flex flex-col overflow-hidden w-full">
         
         {/* BARRA DE PESQUISA */}
-        <div className="p-3 md:p-4 border-b border-[#B68B40]/20 bg-[#FDFCFB] shrink-0">
-          <input type="text" placeholder="Procurar paciente..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full md:max-w-md border border-gray-300 rounded-md p-2.5 text-sm outline-none focus:border-[#B68B40]"/>
+        <div className="p-4 border-b border-[#B68B40]/20 bg-[#FDFCFB] shrink-0">
+          <input type="text" placeholder="Procurar paciente..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full md:max-w-md border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-[#B68B40]"/>
         </div>
         
         {/* ÁREA DA LISTA */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden w-full">
           
-          {/* LAYOUT PARA TELEMÓVEL: Lista 100% Edge-to-Edge, ícones distribuídos para a direita */}
-          <div className="block sm:hidden w-full overflow-x-hidden">
+          {/* LAYOUT PARA TELEMÓVEL */}
+          <div className="block sm:hidden divide-y divide-gray-100 w-full">
             {pacientesProcessados.map(paciente => (
-              <div key={paciente.id} className="px-4 py-4 flex items-center justify-between border-b border-gray-100 hover:bg-[#B68B40]/5 cursor-pointer transition-colors" onClick={() => abrirPerfilPaciente(paciente)}>
-                
-                {/* Texto ganha flex-1 para ocupar o espaço necessário, mas sem forçar a tela */}
-                <div className="flex-1 min-w-0 pr-4">
+              <div key={paciente.id} className="p-4 flex items-center justify-between hover:bg-[#B68B40]/5 cursor-pointer transition-colors" onClick={() => abrirPerfilPaciente(paciente)}>
+                <div className="flex-1 min-w-0 pr-3 overflow-hidden">
                   <p className="text-sm font-medium text-gray-800 truncate" title={paciente.nome_completo}>{paciente.nome_completo}</p>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">{paciente.telefone || 'Sem telefone'}</p>
                 </div>
-                
-                {/* Ícones agrupados à direita */}
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={(e) => deletarPaciente(paciente.id, e)} className="text-red-400 p-2 hover:bg-red-50 rounded-full transition-colors" title="Eliminar Paciente">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -364,13 +405,13 @@ export default function Pacientes() {
             ))}
           </div>
 
-          {/* LAYOUT PARA COMPUTADOR: Tabela Clássica */}
+          {/* LAYOUT PARA COMPUTADOR (Tabela perfeitamente alinhada e proporcional) */}
           <table className="hidden sm:table w-full text-left table-fixed">
             <thead className="bg-gray-50/50 text-gray-500 text-xs uppercase sticky top-0 border-b border-gray-200">
               <tr>
-                <th className="p-4 w-[50%]">Paciente</th>
-                <th className="p-4 w-[30%]">Contato</th>
-                <th className="p-4 text-right w-[20%]">Ações</th>
+                <th className="p-4 w-[45%] font-bold tracking-wider">Paciente</th>
+                <th className="p-4 w-[35%] font-bold tracking-wider">Contato</th>
+                <th className="p-4 text-right w-[20%] font-bold tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -379,8 +420,8 @@ export default function Pacientes() {
                   <td className="p-4 font-medium text-gray-800 truncate">{paciente.nome_completo}</td>
                   <td className="p-4 text-sm text-gray-600 truncate">{paciente.telefone || '---'}</td>
                   <td className="p-4">
-                    <div className="flex items-center justify-end gap-4">
-                      <button onClick={(e) => deletarPaciente(paciente.id, e)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-full transition-colors shrink-0" title="Eliminar Paciente">
+                    <div className="flex items-center justify-end gap-3">
+                      <button onClick={(e) => deletarPaciente(paciente.id, e)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors shrink-0" title="Eliminar Paciente">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       </button>
                       <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -394,10 +435,9 @@ export default function Pacientes() {
         </div>
       </div>
 
-      {/* MODAL / PERFIL DO PACIENTE (Edge-to-Edge no mobile) */}
       {modalAberto && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 sm:p-4">
-          <div className="bg-white sm:rounded-xl shadow-2xl w-full max-w-5xl h-full sm:h-[90vh] flex flex-col overflow-hidden mx-auto">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden mx-auto">
             <div className="p-4 md:p-5 border-b border-gray-100 flex justify-between items-center bg-[#FDFCFB] shrink-0">
               <h2 className="text-lg md:text-xl font-medium text-[#B68B40] truncate pr-4">{isEditing ? `Prontuário: ${form.nome_completo}` : 'Novo Paciente'}</h2>
               <button onClick={() => setModalAberto(false)} className="text-gray-400 text-2xl shrink-0 hover:text-gray-600">&times;</button>
@@ -414,25 +454,46 @@ export default function Pacientes() {
             
             <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
               
-              {/* --- ABA DADOS --- */}
               {abaAtiva === 'dados' && (
                 <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-6">
                   <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Nome Completo *</label><input type="text" value={form.nome_completo || ''} onChange={e => setForm({...form, nome_completo: e.target.value})} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" required /></div>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">CPF</label><input type="text" value={form.cpf || ''} onChange={e => setForm({...form, cpf: formatarCPF(e.target.value)})} maxLength={14} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
                     <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">RG</label><input type="text" value={form.rg || ''} onChange={e => setForm({...form, rg: e.target.value})} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
                     <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Data de Nascimento</label><input type="date" value={form.data_nascimento || ''} onChange={e => setForm({...form, data_nascimento: e.target.value})} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none text-gray-700" /></div>
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Telefone (WhatsApp)</label><input type="text" value={form.telefone || ''} onChange={e => setForm({...form, telefone: formatarTelefone(e.target.value)})} maxLength={15} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
                     <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">E-mail</label><input type="email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
                   </div>
-                  <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Endereço Completo</label><input type="text" value={form.endereco || ''} onChange={e => setForm({...form, endereco: e.target.value})} placeholder="Rua, Número, Bairro, Cidade - Estado" className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
+
+                  {/* CAMPOS DE ENDEREÇO SEPARADOS */}
+                  <div className="space-y-4 pt-2 border-t border-gray-100">
+                    <h3 className="text-xs font-bold text-[#B68B40] uppercase tracking-wider">Endereço</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">CEP</label><input type="text" value={form.cep || ''} onChange={e => setForm({...form, cep: formatarCEP(e.target.value)})} maxLength={9} placeholder="00000-000" className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
+                      <div className="md:col-span-2"><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Rua / Logradouro</label><input type="text" value={form.rua || ''} onChange={e => setForm({...form, rua: e.target.value})} placeholder="Ex: Av. Principal" className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Número</label><input type="text" value={form.numero || ''} onChange={e => setForm({...form, numero: e.target.value})} placeholder="Ex: 123" className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
+                      <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Bairro</label><input type="text" value={form.bairro || ''} onChange={e => setForm({...form, bairro: e.target.value})} placeholder="Ex: Centro" className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
+                      <div><label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Cidade</label><input type="text" value={form.cidade || ''} onChange={e => setForm({...form, cidade: e.target.value})} placeholder="Ex: João Monlevade" className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none" /></div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Estado (UF)</label>
+                      <input type="text" value={form.estado || ''} onChange={e => setForm({...form, estado: e.target.value})} maxLength={2} placeholder="Ex: MG" className="w-full md:w-32 border border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none uppercase" />
+                    </div>
+                  </div>
+
                   <div className="flex justify-end pt-4"><button onClick={salvarPaciente} className="bg-[#B68B40] text-white px-8 py-3 rounded-lg text-sm font-medium hover:bg-[#9a7330] shadow-sm w-full md:w-auto">Guardar Dados</button></div>
                 </div>
               )}
 
-              {/* --- ABA ANAMNESES --- */}
               {abaAtiva === 'anamneses' && (
                 <div className="p-4 md:p-6 h-full flex flex-col">
                   {fluxoAnamnese === 'lista' && (
@@ -526,7 +587,6 @@ export default function Pacientes() {
                 </div>
               )}
 
-              {/* --- ABA DOCUMENTOS E TERMOS --- */}
               {abaAtiva === 'documentos' && (
                 <div className="p-4 md:p-6 h-full flex flex-col">
                   {fluxoDocumento === 'lista' && (
@@ -612,7 +672,6 @@ export default function Pacientes() {
                 </div>
               )}
 
-              {/* --- ABA MÍDIAS E EVOLUÇÃO --- */}
               {abaAtiva === 'midias' && (
                 <div className="p-4 md:p-6 h-full flex flex-col">
                   {fluxoMidia === 'lista' && (
@@ -640,9 +699,9 @@ export default function Pacientes() {
                           <div><label className="block text-xs font-bold text-gray-600 uppercase mb-1">Etapa (Evolução) *</label><select value={formMidia.categoria} onChange={e => setFormMidia({...formMidia, categoria: e.target.value as any})} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:border-[#B68B40] outline-none bg-white"><option value="Antes">Antes do Procedimento</option><option value="Durante">Durante o Tratamento</option><option value="Depois">Depois (Resultado Final)</option></select></div>
                           <div><label className="block text-xs font-bold text-gray-600 uppercase mb-1">Data da Foto *</label><input type="date" value={formMidia.data_registro} onChange={e => setFormMidia({...formMidia, data_registro: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:border-[#B68B40] outline-none" /></div>
                         </div>
-                        <div><label className="block text-xs font-bold text-gray-600 uppercase mb-1">Procedimento *</label><input type="text" value={formMidia.procedimento} onChange={e => setFormMidia({...formMidia, procedimento: e.target.value})} placeholder="Ex: Lipo Enzimática de Papada" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:border-[#B68B40] outline-none" /></div>
-                        <div><label className="block text-xs font-bold text-gray-600 uppercase mb-1">Arquivo da Imagem *</label><input type="file" accept="image/*" onChange={handleFileChange} className="w-full border border-dashed border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#B68B40]/10 file:text-[#B68B40] hover:file:bg-[#B68B40]/20 cursor-pointer" /></div>
-                        <div><label className="block text-xs font-bold text-gray-600 uppercase mb-1">Observações Técnicas</label><textarea value={formMidia.observacoes} onChange={e => setFormMidia({...formMidia, observacoes: e.target.value})} placeholder="Ex: Paciente apresentou leve edema..." className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:border-[#B68B40] outline-none h-20" /></div>
+                        <div><label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1">Procedimento *</label><input type="text" value={formMidia.procedimento} onChange={e => setFormMidia({...formMidia, procedimento: e.target.value})} placeholder="Ex: Lipo Enzimática de Papada" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:border-[#B68B40] outline-none" /></div>
+                        <div><label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1">Arquivo da Imagem *</label><input type="file" accept="image/*" onChange={handleFileChange} className="w-full border border-dashed border-gray-300 rounded-lg p-3 text-sm focus:border-[#B68B40] outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#B68B40]/10 file:text-[#B68B40] hover:file:bg-[#B68B40]/20 cursor-pointer" /></div>
+                        <div><label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1">Observações Técnicas</label><textarea value={formMidia.observacoes} onChange={e => setFormMidia({...formMidia, observacoes: e.target.value})} placeholder="Ex: Paciente apresentou leve edema..." className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:border-[#B68B40] outline-none h-20" /></div>
                         <div className="flex justify-end pt-4"><button onClick={salvarNovaMidia} disabled={uploadingMidia} className="bg-[#B68B40] text-white px-8 py-3 rounded-lg font-bold text-sm hover:bg-[#9a7330] shadow-sm disabled:opacity-50 w-full sm:w-auto">{uploadingMidia ? 'Enviando...' : 'Salvar Foto na Galeria'}</button></div>
                       </div>
                     </div>
