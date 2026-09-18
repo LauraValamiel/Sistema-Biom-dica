@@ -382,6 +382,19 @@ export default function Pacientes() {
   
   const salvarPaciente = async () => { if (!form.nome_completo) return alert('Nome obrigatório!'); const payload = { nome_completo: form.nome_completo, cpf: form.cpf || null, rg: form.rg || null, data_nascimento: form.data_nascimento || null, telefone: form.telefone || null, email: form.email || null, endereco: form.endereco || null }; if (isEditing && form.id) { await supabase.from('pacientes').update(payload).eq('id', form.id); buscarPacientes(); alert('Atualizado com sucesso!'); } else { const { data } = await supabase.from('pacientes').insert([{ ...payload, data_cadastro: new Date().toISOString() }]).select().single(); if (data) { buscarPacientes(); setForm(data); setIsEditing(true); alert('Cadastrado com sucesso!'); } } };
 
+  // --- NOVA FUNÇÃO: ELIMINAR PACIENTE ---
+  const deletarPaciente = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Impede que o clique no botão abra o perfil do paciente
+    if (window.confirm('Tem a certeza que deseja eliminar este paciente e todo o seu histórico? Esta ação é irreversível.')) {
+      const { error } = await supabase.from('pacientes').delete().eq('id', id);
+      if (error) {
+        alert('Erro ao eliminar paciente: ' + error.message);
+      } else {
+        setPacientes(prev => prev.filter(p => p.id !== id));
+      }
+    }
+  };
+
   const gerarAssinaturaEletronica = async (dupla = false) => { if (!termoAceito) { alert("O Paciente precisa aceitar os termos."); return null; } if (cpfAssinatura.length < 14) { alert("CPF do Paciente incompleto."); return null; } if (dupla) { if (!profAceito) { alert("A Profissional precisa aceitar."); return null; } if (registroProfissional.length < 4) { alert("Registro da Profissional incompleto."); return null; } } let ip = 'IP não identificado'; try { const response = await fetch('https://api.ipify.org?format=json'); const data = await response.json(); ip = data.ip; } catch (e) {} const userAgent = navigator.userAgent; const dataHora = new Date().toISOString(); const stringParaHash = dupla ? `PACIENTE:${cpfAssinatura}-PROF:${registroProfissional}-${dataHora}-${ip}-${userAgent}` : `${cpfAssinatura}-${dataHora}-${ip}-${userAgent}`; const msgBuffer = new TextEncoder().encode(stringParaHash); const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer); const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join(''); return { tipo: dupla ? 'eletronica_avancada_dupla' : 'eletronica_avancada', cpf_assinante: cpfAssinatura, cpf_paciente: cpfAssinatura, registro_profissional: registroProfissional, ip_dispositivo: ip, user_agent: userAgent, data_hora_assinatura: dataHora, hash_autenticacao: hashHex }; };
   const iniciarNovaFicha = (modelo: ModeloFicha) => { setFichaSelecionada(modelo); setRespostasAtuais({}); setDataAssinatura(new Date().toISOString().split('T')[0]); setFichaPreenchidaId(null); setTermoAceito(false); setCpfAssinatura(form.cpf || ''); setProfAceito(false); setRegistroProfissional(''); setFluxoAnamnese('preenchendo'); setTimeout(limparAssinatura, 100); };
   const editarFichaSalva = (fichaSalva: any) => { const modeloOriginal = modelosFichas.find(m => m.titulo === fichaSalva.historico_medico?.tipo_ficha); if (!modeloOriginal) return alert('Modelo não encontrado.'); setFichaSelecionada(modeloOriginal); setRespostasAtuais(fichaSalva.historico_medico?.respostas || {}); setDataAssinatura(fichaSalva.historico_medico?.data_assinatura || new Date().toISOString().split('T')[0]); setFichaPreenchidaId(fichaSalva.id); setTermoAceito(false); setCpfAssinatura(form.cpf || ''); setProfAceito(false); setRegistroProfissional(''); setFluxoAnamnese('preenchendo'); setTimeout(() => { const ctx = canvasRef.current?.getContext('2d'); if (fichaSalva.historico_medico?.assinatura_desenho && ctx) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0); img.src = fichaSalva.historico_medico.assinatura_desenho; } else limparAssinatura(); }, 150); };
@@ -430,7 +443,10 @@ export default function Pacientes() {
                 <tr key={paciente.id} className="hover:bg-[#B68B40]/5 cursor-pointer" onClick={() => abrirPerfilPaciente(paciente)}>
                   <td className="p-4 font-medium">{paciente.nome_completo}</td>
                   <td className="p-4 text-sm text-gray-600">{paciente.telefone || '---'}</td>
-                  <td className="p-4 text-right"><button className="text-[#B68B40] text-sm hover:underline">Abrir Prontuário</button></td>
+                  <td className="p-4 text-right">
+                    <button onClick={(e) => { e.stopPropagation(); abrirPerfilPaciente(paciente); }} className="text-[#B68B40] text-sm hover:underline mr-4">Abrir Prontuário</button>
+                    <button onClick={(e) => deletarPaciente(paciente.id, e)} className="text-red-500 text-sm hover:underline font-medium">Eliminar</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
